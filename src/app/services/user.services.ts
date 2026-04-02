@@ -13,23 +13,8 @@ import {
 } from "../interfaces/user.interfaces";
 import UserModel from "../mongoSchema/user.schema";
 import { genericQuery } from "../utils/queryUtils";
-import { redis } from "../config/redis";
 
-// Helper to clear related caches
-const clearUserCache = async (userId?: string) => {
-  // Clear all users list caches
-  const keys = await redis.keys("users:*");
-  for (const key of keys) {
-    await redis.del(key);
-  }
 
-  // Clear single user cache if userId provided
-  if (userId) {
-    await redis.del(`user:${userId}`);
-  }
-
-  console.log("🧹 Cleared related Redis caches");
-};
 
 // ================================= Registration =================================
 const registerUserIntoDb = async (body: IUser) => {
@@ -43,9 +28,7 @@ const registerUserIntoDb = async (body: IUser) => {
 
   const newUser = await UserModel.create(cleanBody);
 
-  // Clear related cache
-  await clearUserCache();
-
+  
   logger.info(`✅ New user registered: ${newUser.email}`);
   return newUser;
 };
@@ -65,7 +48,6 @@ const loginUserByEmail = async (email: string, password: string) => {
 
 // ================================= Find single user =================================
 const getSingleUser = async (query:{name?: string, email?: string}) => {
-  console.log("🔍 user with query:", query);
 
   // sanitize input
   const sanitizedQuery = sanitize(query);
@@ -86,32 +68,18 @@ const getSingleUser = async (query:{name?: string, email?: string}) => {
     throw new AppError("Email or name is required!", 400);
   }
 
-  // Check Redis cache
-  const cachedUser = await redis.get(cacheKey);
-  if (cachedUser) {
-    console.log("✅ Returning user from Redis cache");
-    return JSON.parse(cachedUser);
-  }
 
-  console.log("🟡 Data from MongoDB (Cache miss)");
+
+
   const user = await UserModel.findOne(mongoQuery).select("-password -__v -isDeleted");
   if (!user) throw new AppError("User not found!", 404);
 
-  // Cache in Redis
-  await redis.setex(cacheKey, 3600, JSON.stringify(user));
-  console.log("💾 Cached user data in Redis");
 
   return user;
 };
 // ================================= Find all users =================================
 const getAllUsers = async (query: IUserQuery) => {
-  const cacheKey = `users:${JSON.stringify(query)}`;
 
-  const cached = await redis.get(cacheKey);
-  if (cached) {
-    console.log("✅ Returning users from Redis cache");
-    return JSON.parse(cached);
-  }
 
   const result = await genericQuery({
     model: UserModel,
@@ -120,9 +88,7 @@ const getAllUsers = async (query: IUserQuery) => {
     // select: "name email phone",
   });
 
-  await redis.setex(cacheKey, 1800, JSON.stringify(result));
-  console.log("💾 Saved users to Redis cache");
-
+ 
   return result;
 };
 
@@ -136,9 +102,7 @@ const deleteUserById = async (id: string) => {
   user.isDeleted = true;
   await user.save();
 
-  // Clear related cache
-  await clearUserCache(cleanId);
-
+ 
   return user;
 };
 
@@ -156,8 +120,6 @@ const updateUserById = async (id: string, updateData: IUpdateUserInput) => {
   if (!updatedUser)
     throw new AppError("User not found or has been deleted!", 404);
 
-  // Clear related cache
-  await clearUserCache(cleanId);
 
   return updatedUser;
 };
