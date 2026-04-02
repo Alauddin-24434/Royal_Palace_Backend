@@ -22,7 +22,6 @@ import rateLimiter from "./app/config/rateLimit";
 import { logger } from "./app/utils/logger";
 import { sanitizeMiddleware } from "./app/middleware/sanitizeMiddleware";
 import { swaggerDoc } from "./app/config/swagger";
-import * as Sentry from "@sentry/node";
 
 // ==============================
 // App Configuration

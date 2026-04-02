@@ -10,7 +10,7 @@ import { PaymentStatus } from "../interfaces/payment.interfaces";
 import PaymentModel from "../mongoSchema/payment.schema";
 import BookingModel from "../mongoSchema/booking.schema";
 
-import { bookingQueue } from "../queues/booking-queue";
+
 import { roomsCalculates } from "../utils/roomCalculations";
 import { checkConflictedRooms } from "../utils/checkRoomAvailablity";
 import { calculateTotalAmount } from "../utils/caculateAmount";
@@ -186,20 +186,20 @@ const bookingInitialization = async (bookingData: IBooking) => {
     const { userId, rooms, name, email, city, address, phone, postcode } =
       bookingData;
 
-    // 1️⃣ rooms calculate
+    //  rooms calculate
     const roomsForCalculation = roomsCalculates(rooms as any);
 
-    // 2️⃣ check conflict rooms
+    // check conflict rooms
     await checkConflictedRooms(roomsForCalculation);
 
-    // 3️⃣ calculate total amount
+    //  calculate total amount
     const totalAmount = calculateTotalAmount(roomsForCalculation);
 
     // Generate Transaction ID
     const transactionId =
       "TXN" + Date.now() + Math.floor(Math.random() * 1000);
 
-    // 4️⃣ Create booking (PENDING)
+    // Create booking (PENDING)
     const booking = await BookingModel.create(
       [
         {
@@ -219,7 +219,7 @@ const bookingInitialization = async (bookingData: IBooking) => {
       { session },
     );
 
-    // 5️⃣ Prevent duplicate PAID payment
+    //  Prevent duplicate PAID payment
     const paidPayment = await PaymentModel.findOne(
       {
         bookingId: booking[0]._id,
@@ -235,7 +235,7 @@ const bookingInitialization = async (bookingData: IBooking) => {
 
     const nights = roomsForCalculation?.[0]?.nights;
 
-    // 6️⃣ Create / Update payment (PENDING)
+    // Create / Update payment (PENDING)
     await PaymentModel.findOneAndUpdate(
       { transactionId },
       {
@@ -247,17 +247,13 @@ const bookingInitialization = async (bookingData: IBooking) => {
       { upsert: true, new: true, session },
     );
 
-    // ✅ Commit transaction
+    //Commit transaction
     await session.commitTransaction();
     session.endSession();
 
-    // 7️⃣ Queue add (AFTER commit)
-    await bookingQueue.add("booking-created", {
-      bookingId: booking[0]._id,
-      transactionId,
-    });
 
-    // 8️⃣ Payment gateway call
+
+    //  Payment gateway call
     const paymntData = {
       name,
       email,
