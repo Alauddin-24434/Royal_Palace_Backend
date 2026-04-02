@@ -1,14 +1,22 @@
 // src/app.ts
-import express, { Application, NextFunction, Request, Response } from "express";
+import express, { Application,  Request, Response } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import session from "express-session";
 import morgan from "morgan"; // moragn → fixed
+import fs from "fs";
+import path from "path";
 
-import { envVariable } from "./app/config";
+// Store server start time
+const startTime = new Date();
+
+// Read version from package.json
+const packageJson = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "../package.json"), "utf-8")
+);
+const serverVersion = packageJson.version;
 import { mainRoutes } from "./app/apiRoutes";
 import globalErrorHandler from "./app/middleware/globalErrorHandeller";
-import { RedisStore } from "connect-redis";
+
 import helmet from "helmet";
 import rateLimiter from "./app/config/rateLimit";
 import { logger } from "./app/utils/logger";
@@ -67,18 +75,69 @@ app.use(sanitizeMiddleware);
 // -------------------------------
 // Routes
 // -------------------------------
-app.get("/api/debug-sentry", function mainHandler(req, res) {
-  // Send a log before throwing the error
-  Sentry.logger.info('User triggered test error', {
-    action: 'test_error_endpoint',
-  });
-  // Send a test metric before throwing the error
-  Sentry.metrics.count('test_counter', 1);
-  throw new Error("My first Sentry error!");
-})
 
-app.get("/", (req, res) => {
-  res.json({ success: true, message: "Royal Palace Server Is Running" });
+
+app.get("/", (req: Request, res: Response) => {
+  const now = new Date();
+  const uptimeMs = now.getTime() - startTime.getTime();
+  const uptimeSeconds = Math.floor(uptimeMs / 1000);
+  const uptimeMinutes = Math.floor(uptimeSeconds / 60);
+  const uptimeHours = Math.floor(uptimeMinutes / 60);
+  const uptimeDays = Math.floor(uptimeHours / 24);
+
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Server Status</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          background: #0f172a;
+          color: white;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          margin: 0;
+        }
+        .card {
+          background: #1e293b;
+          padding: 30px;
+          border-radius: 12px;
+          text-align: center;
+          box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        .status {
+          color: #22c55e;
+          font-size: 20px;
+          margin-top: 10px;
+        }
+        .info {
+          margin-top: 15px;
+          font-size: 16px;
+          color: #94a3b8;
+        }
+        a {
+          color: #3b82f6;
+          text-decoration: none;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h1>👑 Royal Palace Server</h1>
+        <p class="status">✅ Server is Running</p>
+        <div class="info">
+          <p>Version: ${serverVersion}</p>
+          <p>Uptime: ${uptimeDays}d ${uptimeHours % 24}h ${uptimeMinutes % 60}m ${uptimeSeconds % 60}s</p>
+          <p>Current Time: ${now.toLocaleString()}</p>
+          <p><a href="/api-docs" target="_blank">📄 Documentation</a></p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `);
 });
 
 
@@ -94,12 +153,6 @@ app.use((req, res) => {
   res.status(404).json({ success: false, message: "Page Not Found" });
 });
 
-// ==============================
-// SENTRY ERROR HANDLER (BEFORE GLOBAL)
-// ==============================
-// MUST be before your global handler
-// The error handler must be registered before any other error middleware and after all controllers
-Sentry.setupExpressErrorHandler(app);
 
 // ==============================
 // GLOBAL ERROR HANDLER (LAST)
